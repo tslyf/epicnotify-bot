@@ -1,4 +1,5 @@
 from simplevk import Message
+
 from src.epicnotify.bot import bot
 from src.epicnotify.keyboards import MAIN_KEYBOARD, SUBSCRIBE_KEYBOARD
 

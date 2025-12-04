@@ -26,6 +26,7 @@ class Game:
     start_date: datetime
     end_date: datetime
     image_url: str | None
+    is_mystery: bool = False
 
     @property
     def is_active(self) -> bool:
@@ -87,14 +88,17 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
         start_date = datetime.fromisoformat(start_date_str).astimezone(TZ)
         end_date = datetime.fromisoformat(end_date_str).astimezone(TZ)
 
+        key_images = element.get("keyImages", [])
         target_img: str | None = next(
             (
                 i["url"]
-                for i in element.get("keyImages", [])
-                if i["type"] == "OfferImageWide"
+                for i in key_images
+                if i["type"] in ("OfferImageWide", "VaultClosed")
             ),
             None,
         )
+
+        is_mystery = any(i["type"] == "VaultClosed" for i in key_images)
 
         return Game(
             id=element["id"],
@@ -109,6 +113,7 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
             start_date=start_date,
             end_date=end_date,
             image_url=target_img,
+            is_mystery=is_mystery,
         )
 
     except Exception:

@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 from io import BytesIO
 
@@ -41,9 +42,7 @@ def upload_photo_to_vk(bot: Bot, url: str) -> str | None:
     lock = _get_lock_for_url(url)
     with lock:
         try:
-            cached = CachedImage.get_or_none(
-                CachedImage.image_url == url
-            )
+            cached = CachedImage.get_or_none(CachedImage.image_url == url)
             if cached:
                 return str(cached.attachment)
         except Exception:
@@ -59,17 +58,19 @@ def upload_photo_to_vk(bot: Bot, url: str) -> str | None:
             logger.exception(f"Failed to download image {url}")
             return None
 
-        try:
-            # TODO: стоило бы явно указывать peer_id
-            photo = bot.uploader.photo_messages(photos=image_data)[0]
-            attachment = f"photo{photo['owner_id']}_{photo['id']}"
+        for _ in range(3):
+            try:
+                # TODO: стоило бы явно указывать peer_id
+                photo = bot.uploader.photo_messages(photos=image_data)[0]
+                attachment = f"photo{photo['owner_id']}_{photo['id']}"
 
-            CachedImage.create(image_url=url, attachment=attachment)
+                CachedImage.create(image_url=url, attachment=attachment)
 
-            return attachment
-        except Exception:
-            logger.exception(f"Failed to upload image {url} to VK")
-            return None
+                return attachment
+            except Exception:
+                logger.exception(f"Failed to upload image {url} to VK")
+                time.sleep(0.5)
+                return None
 
 
 def format_game_msg(game: Game) -> str:
@@ -81,6 +82,14 @@ def format_game_msg(game: Game) -> str:
     else:
         delta = (game.start_date - now).total_seconds()
         time_str = f"⏱️ Начало через {seconds_to_string(delta)}"
+
+    if game.is_mystery:
+        return (
+            "🔒 Тайная раздача\n\n"
+            "🎁 Epic Games готовит сюрприз! Название игры скрыто. "
+            "Узнаем, что это, как только таймер истечет.\n\n"
+            f"{time_str}"
+        )
 
     price_block = f"💰 {game.fmt_price_discount} / {game.fmt_price_original}"
     description = game.description[:300] if game.description else ""
