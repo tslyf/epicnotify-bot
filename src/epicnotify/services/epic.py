@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 from cachebox import TTLCache, cached
+from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger("epicnotify")
 
@@ -64,6 +65,12 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
             (i for i in mappings if i["pageType"] == "productHome"), None
         )
         page_slug: str | None = page["pageSlug"] if page else None
+
+        if not page_slug:
+            product_slug = element.get("productSlug")
+            if product_slug and product_slug != "[]":
+                page_slug = product_slug
+
         game_url = "https://store.epicgames.com/ru/"
         if page_slug:
             game_url += f"p/{page_slug}"
@@ -82,6 +89,15 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
             fmt_price_discount = f"{price_disc} {currency}"
         if fmt_price_discount == "0":
             fmt_price_discount = "Бесплатно"
+        if fmt_price_original == "0":
+            fmt_price_original = "Бесплатно"
+
+        description = element.get("description")
+        if (
+            description
+            and description.strip().lower() == element["title"].strip().lower()
+        ):
+            description = None
 
         start_date_str = free_offer["startDate"][:19] + "+00:00"
         end_date_str = free_offer["endDate"][:19] + "+00:00"
@@ -89,21 +105,22 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
         end_date = datetime.fromisoformat(end_date_str).astimezone(TZ)
 
         key_images = element.get("keyImages", [])
-        target_img: str | None = next(
-            (
-                i["url"]
-                for i in key_images
-                if i["type"] in ("OfferImageWide", "VaultClosed")
-            ),
+        offer_image_wide = next(
+            (i["url"] for i in key_images if i["type"] == "OfferImageWide"),
             None,
         )
+        vault_closed = next(
+            (i["url"] for i in key_images if i["type"] == "VaultClosed"),
+            None,
+        )
+        target_img = offer_image_wide or vault_closed
 
-        is_mystery = any(i["type"] == "VaultClosed" for i in key_images)
+        is_mystery = vault_closed is not None and offer_image_wide is None
 
         return Game(
             id=element["id"],
             title=element["title"],
-            description=element.get("description"),
+            description=description,
             url=game_url,
             price_original=price_orig,
             fmt_price_original=fmt_price_original,
@@ -124,9 +141,13 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
 @cached(TTLCache(maxsize=1, ttl=300))
 def get_free_games() -> tuple[list[Game], list[Game]]:
     try:
-        resp = requests.get(BASE_URL, timeout=10)
+        session = requests.Session()
+        session.mount("https://", HTTPAdapter(max_retries=3))
+
+        resp = session.get(BASE_URL, timeout=10)
         resp.raise_for_status()
         data = resp.json()
+
         elements = (
             data.get("data", {})
             .get("Catalog", {})

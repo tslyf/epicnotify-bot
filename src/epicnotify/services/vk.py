@@ -91,7 +91,9 @@ def format_game_msg(game: Game) -> str:
             f"{time_str}"
         )
 
-    price_block = f"💰 {game.fmt_price_discount} / {game.fmt_price_original}"
+    price_block = f"💰 {game.fmt_price_discount}"
+    if game.price_original > 0:
+        price_block += f" / {game.fmt_price_original}"
     description = game.description[:300] if game.description else ""
     if description and len(description) < len(game.description or ""):
         description += "..."
