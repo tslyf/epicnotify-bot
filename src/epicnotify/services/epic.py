@@ -58,8 +58,8 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
         if not free_offer:
             return None
 
-        mappings: list[dict[str, Any]] = element.get("catalogNs", {}).get(
-            "mappings", []
+        mappings: list[dict[str, Any]] = (
+            element.get("catalogNs", {}).get("mappings") or []
         )
         page: dict[str, Any] | None = next(
             (i for i in mappings if i["pageType"] == "productHome"), None
@@ -75,7 +75,8 @@ def _parse_game_element(element: dict[str, Any]) -> Game | None:
         if page_slug:
             game_url += f"p/{page_slug}"
 
-        price_data = element.get("price", {}).get("totalPrice", {})
+        price_data = element.get("price") or {}
+        price_data = price_data.get("totalPrice") or {}
         decimals = 10 ** price_data.get("currencyInfo", {}).get("decimals", 2)
         price_orig = price_data.get("originalPrice", 0) / decimals
         price_disc = price_data.get("discountPrice", 0) / decimals
